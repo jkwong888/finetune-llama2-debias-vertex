@@ -16,12 +16,13 @@ jupyter nbconvert --RegexRemovePreprocessor.patterns="['^\!.*$','.*IPython.*']" 
 
 Note we had to remove shell commands from the notebook manually as they don't work outside of the notebook, and remove the IPython commands as we are running the python code outside of a notebook.
 
-You can use the [submit-finetuning-pipeline-job.sh](submit-finetuning-pipeline-job.sh) bash script to submit it as a job on Vertex AI. We use the `pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime` script and install the dependencies in [requirements.txt](requirements.txt) to run a custom job in Vertex AI on a `g2-standard-8` machine with a single L4 GPU. 
+You can use the [submit-finetuning-pipeline-job.sh](submit-finetuning-pipeline-job.sh) bash script to submit it as a job on Vertex AI. We use the `pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime` container image and install the dependencies in [requirements.txt](requirements.txt) to build the training environment, then execute the script in a custom job in Vertex AI on a `g2-standard-8` machine with a single L4 GPU. 
 
 ## Deploy the model to Vertex AI Endpoint for prediction
 
-The model can be deployed to a serving container (we used vLLM) for online prediction.  Please view the notebook [quantization-inference.ipynb](quantization-inference.ipynb) for details.
+The finetuned model is published to the Vertex AI model registry and can be deployed to a serving container (we used [vLLM](https://github.com/vllm-project/vllm)) for online prediction.  Please view the notebook [quantization-inference.ipynb](quantization-inference.ipynb) for details.
 
+_Note: Because vLLM doesn't natively support [bitsandbytes](https://github.com/TimDettmers/bitsandbytes) quantization used in the fine tuning notebook, we had to modify the notebook to merge the adapter weights and save the final merged model for loading into an L4 GPU at half precision later._
 
 ## Run an evaluation in a pipeline
 
