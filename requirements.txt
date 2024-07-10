@@ -1,0 +1,10 @@
+datasets
+peft
+trl
+accelerate
+bitsandbytes
+sentencepiece
+tensorboard
+google-cloud-storage
+google-cloud-aiplatform
+gcsfs
