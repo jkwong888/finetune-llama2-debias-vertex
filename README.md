@@ -1,6 +1,6 @@
 # Fine tuning Llama 2 on Vertex AI Pipelines
 
-An example notebook on Finetuning Llama2 chat to debias texts, using the [dataset](https://huggingface.co/datasets/newsmediabias/debiased_dataset) hosted on Huggingface. This was provided as an example on finetuning Llama2, but stopped short of deployment and executing in a full pipeline.
+An example [notebook](quantization.ipynb) was provided on Finetuning Llama2 chat to debias texts, using the [dataset](https://huggingface.co/datasets/newsmediabias/debiased_dataset) hosted on Huggingface. This original notebook was provided as an example on finetuning Llama2, but stopped short of deployment and executing in a full pipeline with evaluation.
 
 We updated the notebook to save and load datasets and model weights to Google Cloud Storage, and publish the model to the Vertex AI model registry.
 
