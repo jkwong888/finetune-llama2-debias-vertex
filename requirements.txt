@@ -8,3 +8,6 @@ tensorboard
 google-cloud-storage
 google-cloud-aiplatform
 gcsfs
+evaluate
+rouge_score
+vllm

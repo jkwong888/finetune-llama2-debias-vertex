@@ -30,4 +30,7 @@ We can compare ground truth biased/debiased text pairs to outputs of our predict
 
 We can convert this to a custom job on Vertex AI using the test set that we set aside during the finetuning process.
 
-(This part is still a work in progress).
+
+```
+jupyter nbconvert --RegexRemovePreprocessor.patterns="['^\!.*$','.*IPython.*']" quantization-evaluation.ipynb --to python
+```
