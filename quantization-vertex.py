@@ -24,7 +24,7 @@
 # 
 # 
 
-# In[ ]:
+# In[2]:
 
 
 import os
@@ -42,12 +42,13 @@ from transformers import (
 
 from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
 from trl import SFTTrainer
+import argparse
 
 
 # ## Configuring Directory Paths for Model Weights, Dataset, and Model Storage
 # This cell specifies the directory paths for storing model checkpoints, adapter models, merged models, and the dataset necessary for the task.
 
-# In[ ]:
+# In[3]:
 
 
 bucket_name = "jkwng-llama-experiments"
@@ -56,7 +57,26 @@ model_bucket_prefix = "llama2"
 model_path = f"gs://{bucket_name}/{model_bucket_prefix}/{model_dir}"
 
 
-# In[ ]:
+# In[4]:
+
+
+# Get the default cloud project id.
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+
+# Get the default region for launching jobs.
+REGION = os.getenv("GOOGLE_CLOUD_REGION")
+
+parser = argparse.ArgumentParser(
+                    prog='quantization-evaluation',
+                    description='What the program does',
+                    epilog='Text at the bottom of help')
+parser.add_argument('-m', '--model', default=f"quantized_{model_dir}", required=False)
+parser.add_argument('-r', '--region', default=REGION, required=False)
+parser.add_argument('-p', '--project', default=PROJECT_ID, required=False)
+args, unknown = parser.parse_known_args()
+
+
+# In[5]:
 
 
 #DATASET_PATH = "../../data/debiased_profainty_check_with_keywords.csv" # dataset of biased and corresponding debiased text
@@ -66,7 +86,7 @@ CHECKPOINT_DIR = f"{OUTPUT_DIR}checkpoint" # where to save checkpoints
 MERGED_MODEL_DIR= f"{OUTPUT_DIR}merged_model"  # where to save merged model
 
 
-# In[ ]:
+# In[6]:
 
 
 local_model_dir = "projects/fta_bootcamp/downloads"
@@ -74,7 +94,7 @@ MODEL_NAME = f"{local_model_dir}/Llama-2-7b-chat-hf" # chat model
 NEW_MODEL_NAME = "llama-2-7b-debiaser" # Fine-tuned model name
 
 
-# In[ ]:
+# In[13]:
 
 
 from google.cloud import storage
@@ -85,16 +105,23 @@ bucket = storage_client.bucket(bucket_name)
 os.makedirs(MODEL_NAME, exist_ok=True)
 
 #print(list(bucket.list_blobs(prefix=f"{model_bucket_prefix}/{model_dir}")))
-
+bucket_prefix = f"{model_bucket_prefix}/{model_dir}"
 # download all files from path
-for blob in bucket.list_blobs(prefix=f"{model_bucket_prefix}/{model_dir}"):
-  print(f"downloading {blob.name} to {MODEL_NAME}/{os.path.basename(blob.name)}")
-  blob.download_to_filename(f"{MODEL_NAME}/{os.path.basename(blob.name)}")
+for blob in bucket.list_blobs(prefix=bucket_prefix):
+  local_blob_name = str.join('/', blob.name.split(bucket_prefix)[1].split("/")[1:])
+  os.makedirs(os.path.dirname(f"{MODEL_NAME}/{local_blob_name}"), exist_ok=True)
+
+  if os.path.exists(f"{MODEL_NAME}/{local_blob_name}"):
+    continue
+
+  print(f"downloading {blob.name} to {MODEL_NAME}/{local_blob_name}")
+  #print(blob.name)
+  blob.download_to_filename(f"{MODEL_NAME}/{local_blob_name}")
 
 
 # ## Creating a HuggingFace Dataset
 
-# In[ ]:
+# In[8]:
 
 
 def create_hf_dataset_from_csv(csv_path):
@@ -108,7 +135,7 @@ dataset = dataset.select_columns(["biased_text", "debiased_text"])
 
 # Here are the first 3 samples of the dataset:
 
-# In[ ]:
+# In[9]:
 
 
 print(len(dataset["train"]))
@@ -121,7 +148,7 @@ for i in range(3):
 
 # Write the datasets to storage
 
-# In[ ]:
+# In[10]:
 
 
 # write the train and test dataset to disk
@@ -133,7 +160,7 @@ dataset["test"].save_to_disk(f"{MERGED_MODEL_DIR}/dataset/test")
 
 # ## Loading Tokenizer
 
-# In[ ]:
+# In[14]:
 
 
 tokenizer = LlamaTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True, add_eos_token=True)
@@ -149,7 +176,7 @@ tokenizer.model_max_length = 1024
 # 
 # `### Instruction:\n {prompt}\n ### Input:\n {input_text}\n ### Response\n: {completion}`
 
-# In[ ]:
+# In[15]:
 
 
 def formatting_prompts_func(examples):
@@ -192,7 +219,7 @@ def formatting_prompts_func(examples):
 # 
 # https://arxiv.org/abs/2305.14314
 
-# In[ ]:
+# In[16]:
 
 
 peft_config = LoraConfig(
@@ -215,7 +242,7 @@ peft_config = LoraConfig(
 # * set bnb_4bit_use_double_quant=True to use a nested quantization scheme to quantize the already quantized weights.
 # * set bnb_4bit_compute_dtype=torch.bfloat16 to use bfloat16 for faster computation.
 
-# In[ ]:
+# In[17]:
 
 
 use_4bit = True # Activate 4-bit precision base model loading
@@ -236,7 +263,7 @@ bnb_config = BitsAndBytesConfig(
 
 # In the cell below, we create a model object with the defined quantizaition configuration from the bitsandbytes library
 
-# In[ ]:
+# In[18]:
 
 
 device_map = {"":0}
@@ -252,7 +279,7 @@ base_model.config.pretraining_tp = 1 # Setting this to a value different than 1 
 # ### Base Model Generation
 # Here we test the performance of the base model:
 
-# In[ ]:
+# In[19]:
 
 
 instruction = (
@@ -280,7 +307,7 @@ result[0]['generated_text']
 
 # ### Calculating Trainable Parameters of the Model
 
-# In[ ]:
+# In[20]:
 
 
 def print_trainable_parameters(model):
@@ -301,7 +328,7 @@ print_trainable_parameters(base_model)
 
 # ## Defining Training Arguments
 
-# In[ ]:
+# In[21]:
 
 
 training_arguments = TrainingArguments(
@@ -341,7 +368,7 @@ trainer = SFTTrainer(
 
 # ## Training the Model
 
-# In[ ]:
+# In[22]:
 
 
 trainer.train()
@@ -349,7 +376,7 @@ trainer.train()
 
 # ## Merge the Model
 
-# In[ ]:
+# In[23]:
 
 
 model = trainer.model.save_pretrained(os.path.join(MERGED_MODEL_DIR, "adapter")) # save adapter weights
@@ -360,7 +387,7 @@ del base_model
 del trainer
 
 
-# In[ ]:
+# In[1]:
 
 
 import torch
@@ -371,6 +398,7 @@ from transformers import (
     LlamaTokenizer,
 )
 from peft import PeftModel
+import argparse
 
 local_model_dir = "projects/fta_bootcamp/downloads"
 MODEL_NAME = f"{local_model_dir}/Llama-2-7b-chat-hf" # chat model
@@ -387,9 +415,23 @@ output_model_name = f"{output_model_parent}_{output_model_version}"
 output_model_path = f"{model_bucket_prefix}/{output_model_name}"
 output_model_full_path = f"gs://{bucket_name}/{output_model_path}"
 
+# Get the default cloud project id.
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+
+# Get the default region for launching jobs.
+REGION = os.getenv("GOOGLE_CLOUD_REGION")
+
+parser = argparse.ArgumentParser(
+                    prog='quantization-evaluation',
+                    description='What the program does',
+                    epilog='Text at the bottom of help')
+parser.add_argument('-m', '--model', default=output_model_parent, required=False)
+parser.add_argument('-r', '--region', default=REGION, required=False)
+parser.add_argument('-p', '--project', default=PROJECT_ID, required=False)
+args, unknown = parser.parse_known_args()
 
 
-# In[ ]:
+# In[2]:
 
 
 tokenizer = LlamaTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True, add_eos_token=True)
@@ -415,7 +457,7 @@ peft_model = PeftModel.from_pretrained(
 )
 
 
-# In[ ]:
+# In[3]:
 
 
 merged_model = peft_model.merge_and_unload(progressbar=True)
@@ -423,7 +465,7 @@ print(base_model)
 print(merged_model)
 
 
-# In[ ]:
+# In[4]:
 
 
 merged_model.save_pretrained(MERGED_MODEL_DIR, safe_serialization=False)
@@ -434,7 +476,7 @@ tokenizer.save_pretrained(MERGED_MODEL_DIR)
 
 # ### Write the model weights to cloud storage
 
-# In[ ]:
+# In[5]:
 
 
 from pathlib import Path
@@ -469,15 +511,17 @@ for path in file_paths:
 
 # ### publish the model to  Vertex AI
 
-# In[ ]:
+# Publish the finetuned model to Vertex AI, using the prebuilt vLLM serving container.  We can deploy this model to an online prediction endpoint once it's published.
+
+# In[8]:
 
 
 from google.cloud import aiplatform
 
-aiplatform.init()
+aiplatform.init(project=args.project, location=args.region)
 
 
-# In[ ]:
+# In[9]:
 
 
 from platform import version
@@ -512,7 +556,7 @@ try:
   vertex_model = vertex_model.upload(
       display_name=f"{output_model_parent}",
       version_aliases=[f"v{output_model_version}"],
-      parent_model=f"{output_model_parent}",
+      parent_model=f"{args.model}",
       artifact_uri=output_model_full_path,
       serving_container_image_uri=VLLM_DOCKER_URI,
       serving_container_command=["python", "-m", "vllm.entrypoints.api_server"],
@@ -530,7 +574,7 @@ except google.api_core.exceptions.NotFound as e:
 
     vertex_model = aiplatform.Model.upload(
       display_name=f"{output_model_parent}",
-      model_id=f"{output_model_parent}",
+      model_id=f"{args.model}",
       version_aliases=[f"v{output_model_version}"],
       artifact_uri=output_model_full_path,
       serving_container_image_uri=VLLM_DOCKER_URI,
@@ -545,46 +589,4 @@ except google.api_core.exceptions.NotFound as e:
     )
 
 print(f"Vertex model: {vertex_model.to_dict()}")
-
-
-# ## Load and Test Trained Model
-
-# In[ ]:
-
-
-from vllm import LLM, SamplingParams
-llm = LLM(model=MERGED_MODEL_DIR)
-
-
-# ### Trained Model Generation
-# Here we test the performance of the trained model:
-
-# In[ ]:
-
-
-instruction = (
-    " You are a text debiasing bot, you take as input a"
-    " text and you output its debiased version by rephrasing it to be"
-    " free from any age, gender, political, social or socio-economic"
-    " biases, without any extra outputs. Debias this text by rephrasing"
-    " it to be free of bias: "
-)
-
-input_text = "Women are dumb."
-text = f'''Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
-
-### Instruction:
-{instruction}
-
-### Input:
-{input_text}
-'''
-sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
-outputs = llm.generate([text], sampling_params)
-
-# Print the outputs.
-for output in outputs:
-    prompt = output.prompt
-    generated_text = output.outputs[0].text
-    print(f"\nPrompt: {prompt!r}, Generated text: {generated_text!r}")
 
